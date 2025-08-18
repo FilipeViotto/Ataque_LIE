@@ -7,8 +7,6 @@ def ataque(args,modelos:list,wm, z = 1.5):
     grupos = list(zip(*parametros))
     s = (args.n_workers // 2 + 1) - wm
     z = norm.ppf(1 - s / args.n_workers)
-    print(z)
-
 
     media = []
     desvios = []

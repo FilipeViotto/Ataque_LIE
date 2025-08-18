@@ -2,3 +2,5 @@ venv/
 simulacoes/
 *.png
 *.txt
+data/
+__pycache__/
