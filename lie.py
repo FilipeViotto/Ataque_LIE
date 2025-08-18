@@ -5,7 +5,8 @@ def ataque(args,modelos:list,wm, z = 1.5):
     parametros = [[param.data.clone() for param in worker.parameters()] for worker in modelos[0:wm]]
 
     grupos = list(zip(*parametros))
-
+    s = (args.n_workers // 2 + 1) - wm
+    z = norm.ppf(1 - s / args.n_workers)
     print(z)
 
 
