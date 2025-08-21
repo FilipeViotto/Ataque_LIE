@@ -10,22 +10,54 @@ import random
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 
-from lie import ataque
-from modelo import MLP
+from lie import ataque_nao_oniciente, ataque_oniciente
+from modelo import MLP, MLP2
 from args import Arguments
-from processamento import prepare_dataset, fedavg_aggregation, train, test
+from processamento import prepare_dataset, fedavg_aggregation, train, test, prepare_mnist_dataset, main_train
 import os
 
-# Classe Arguments para encapsular hiperparâmetros
 
+# Classe Arguments para encapsular hiperparâmetros
 
 args = Arguments()
 use_cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device("cuda" if use_cuda else "cpu")
 
+
+def main(wm):                                                                       # recebe a quantidade de workes maliciosos
+    '''Função adicionada para teste. o comportamento da versão anterior estava inadequado'''
+    lista_acuracia = []
+
+    models = [MLP2().to(device) for _ in range(args.n_workers)]                      # cria uma lista de workers
+    optimizers = [optim.SGD(model.parameters(), lr= args.lr, momentum=args.momentum, weight_decay= args.l2) for model in models]  # SGD com momentum e L2 regularização (weight_decay)
+    criterion = nn.CrossEntropyLoss()
+
+    workers_maliciosos = []           # cria lista para armazenar os workes maliciosos
+    #workers_maliciosos = random.sample(range(args.n_workers), args.n_corrupted_workers)
+    for i in range(wm):               # marca os numeros dos workers maliciosos
+        workers_maliciosos.append(i)
+
+    # Criando os loaders de dados para cada trabalhador e o loader de teste global
+    trainloaders, testloader = prepare_mnist_dataset()
+    global_model = MLP2().to(device)
+
+    # Loop de treinamento federado
+    for epoch in range(1, args.epochs + 1):
+        print(epoch)
+        main_train(args, models, device, trainloaders, optimizers, criterion, epoch)
+
+        if epoch % 1 == 0:
+            if wm>1:
+                modelos_maliciosos = [models[i] for i in workers_maliciosos]
+                ataque_nao_oniciente(models)
+            fedavg_aggregation(models, global_model)
+            maior, lista_acuracia = test(global_model, device, testloader, epoch, lista_acuracia)
+    return maior, lista_acuracia
+
+
 # Função principal
 def gerenciamento(wm):
-    maior = 0
+    maior = 0                                                   # define o maior como zero
     lista_acuracia = []
     models = [MLP().to(device) for _ in range(args.n_workers)]
     optimizers = [optim.SGD(model.parameters(), lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay) for model in models]
@@ -49,7 +81,7 @@ def gerenciamento(wm):
 
         if epoch % 1 == 0:
             if wm>1:
-                ataque(args, models, wm)
+                ataque_nao_oniciente(args, models, wm)
             fedavg_aggregation(models, global_model)
             maior, lista_acuracia = test(global_model, device, testloader, epoch, lista_acuracia)
     return maior, lista_acuracia
@@ -57,14 +89,16 @@ def gerenciamento(wm):
 
 if __name__ == "__main__":
     lista_maior_acuracia = []
+    x = []
 
-    for wm in range(args.n_workers):                  # passo com as quantidades de workers maliciosos em cada simulação
-        if not os.path.isdir(f'simulacoes/simulacao{wm}'):
-            os.makedirs(f'simulacoes/simulacao{wm}')
+    for wm in range(11,args.n_corrupted_workers+1):                  # passo com as quantidades de workers maliciosos em cada simulação
+        x.append(wm)
+        if not os.path.isdir(f'simulacoes'):
+            os.makedirs(f'simulacoes')
         print(f"Quantidade de workers maliciosos: {wm}")
         # with open(f"teste{wm}.txt", 'w') as file:
         #   file.write(f"Quantidade de workers maliciosos: {wm}\n")
-        maior, lista_de_acuracia = gerenciamento(wm)
+        maior, lista_de_acuracia = main(wm)
 
 
 
@@ -76,13 +110,13 @@ if __name__ == "__main__":
         plt.xlabel('epochs')
         plt.ylabel('acc')
         plt.title(f'simulation{wm}')
-        plt.savefig(f'simulacoes/simulacao{wm}/simulation{wm}')
+        plt.savefig(f'simulacoes/simulation{wm}')
         plt.close()
 
 
         with open(f"teste51.txt", 'a') as file:
             file.write(f"Maior acurácia: {maior}\n")
-        plt.plot(range(len(lista_maior_acuracia)),[round(numero, 2) for numero in lista_maior_acuracia])
+        plt.plot(x,[round(numero, 3) for numero in lista_maior_acuracia])
         plt.xlabel('Quantidade de workers maliciosos')
         plt.ylabel('Acurácia')
         plt.title('Acurácia por quantidade de workers maliciosos')
